@@ -1195,14 +1195,72 @@ logging:
 | SERVER_PORT | Override server port |
 | SPRING_DATASOURCE_URL | Override database URL |
 
-### 12.4 Customizing Business Hours
+### 12.4 Customizable Business Rules
 
-To change the default 08:00-18:00 availability window, modify `BookingService.getAvailability()`:
+All business rules are configurable via environment variables. No code changes needed.
 
-```java
-LocalTime startHour = LocalTime.of(9, 0);  // Change to 09:00
-LocalTime endHour = LocalTime.of(20, 0);   // Change to 20:00
+#### 12.4.1 Business Hours
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| BOOKING_HOUR_START | 08:00 | Start of business day (24h format) |
+| BOOKING_HOUR_END | 18:00 | End of business day (24h format) |
+
+#### 12.4.2 Booking Constraints
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| BOOKING_MIN_ADVANCE_HOURS | 1 | Minimum hours in advance to book |
+| BOOKING_MIN_DURATION_MINUTES | 30 | Minimum booking duration |
+| BOOKING_MAX_DURATION_HOURS | 8 | Maximum booking duration |
+| BOOKING_ALLOW_WEEKENDS | false | Allow bookings on Saturday/Sunday |
+
+#### 12.4.3 Cancellation Policy
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| CANCELLATION_MIN_HOURS | 1 | Hours before start to allow cancellation |
+
+### 12.5 Changing Business Hours Without Code
+
+Create a file `application-prod.yml` with your custom settings:
+
+```yaml
+booking:
+  business:
+    hour-start: "09:00"
+    hour-end: "20:00"
+  booking:
+    min-advance-hours: 2
+    min-duration-minutes: 60
+    allow-weekends: true
+  cancellation:
+    min-hours: 2
+
+server:
+  port: 8080
+
+spring:
+  datasource:
+    url: jdbc:h2:mem:bookingdb
+    username: sa
+    password:
 ```
+
+Then run with: `java -jar app.jar --spring.profiles.active=prod`
+
+### 12.6 Quick Reference - What Can Be Configured
+
+| Feature | Location | Default |
+|---------|----------|---------|
+| Business hours | Environment/Properties | 08:00 - 18:00 |
+| Minimum advance booking | BookingService.java | 1 hour |
+| Minimum booking duration | BookingService.java | 30 minutes |
+| Cancellation deadline | BookingService.java | 1 hour before |
+| Weekends allowed | BookingService.java | No |
+| API port | application.yml | 8080 |
+| Database | application.yml | H2 in-memory |
+| API documentation | application.yml | /swagger-ui.html |
 
 ---
 
@@ -1493,7 +1551,22 @@ A: No, start time must be in the future.
 A: The booking remains as CONFIRMED. There's no auto-cancellation.
 
 ### Q: How do I change business hours?
-A: Modify `BookingService.getAvailability()` method.
+A: Create `application-prod.yml` with custom values:
+```yaml
+booking:
+  business:
+    hour-start: "09:00"
+    hour-end: "20:00"
+```
+Then run: `java -jar app.jar --spring.profiles.active=prod`
+
+### Q: What rules can I customize without changing code?
+A: All business rules are configurable:
+- Business hours (08:00-18:00)
+- Minimum advance booking (1 hour default)
+- Minimum duration (30 minutes)
+- Cancellation deadline (1 hour)
+- Weekends allowed (no by default)
 
 ### Q: Can I use a real database instead of H2?
 A: Yes, update spring.datasource.url in application.yml for PostgreSQL, MySQL, etc.

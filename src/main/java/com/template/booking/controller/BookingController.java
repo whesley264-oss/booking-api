@@ -1,6 +1,8 @@
 package com.template.booking.controller;
 
 import com.template.booking.dto.*;
+import com.template.booking.dto.common.PageRequestDto;
+import com.template.booking.dto.common.PageResponse;
 import com.template.booking.service.BookingService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -9,14 +11,12 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 import java.net.URI;
-import java.time.LocalDate;
 import java.util.List;
 
 @RestController
@@ -27,13 +27,12 @@ public class BookingController {
     private final BookingService bookingService;
 
     @PostMapping
-    @Operation(summary = "Create a new booking", description = "Creates a new booking for a resource. " +
-            "Returns 409 Conflict if the time slot is already booked.")
+    @Operation(summary = "Create a new booking", description = "Creates a new booking for a resource.")
     @ApiResponses({
             @ApiResponse(responseCode = "201", description = "Booking created successfully"),
             @ApiResponse(responseCode = "400", description = "Invalid input data"),
             @ApiResponse(responseCode = "404", description = "Resource not found"),
-            @ApiResponse(responseCode = "409", description = "Time slot conflict - resource already booked"),
+            @ApiResponse(responseCode = "409", description = "Time slot conflict"),
             @ApiResponse(responseCode = "422", description = "Business rule violation")
     })
     public ResponseEntity<BookingResponse> createBooking(
@@ -50,19 +49,36 @@ public class BookingController {
     }
 
     @GetMapping("/my")
-    @Operation(summary = "Get current user's bookings")
-    public ResponseEntity<List<BookingResponse>> getMyBookings(
-            @AuthenticationPrincipal UserDetails user) {
-        return ResponseEntity.ok(bookingService.getUserBookings(user.getUsername()));
+    @Operation(summary = "Get current user's bookings with pagination")
+    public ResponseEntity<PageResponse<BookingResponse>> getMyBookings(
+            @AuthenticationPrincipal UserDetails user,
+            @Parameter(description = "Page number") @RequestParam(defaultValue = "0") int page,
+            @Parameter(description = "Page size") @RequestParam(defaultValue = "20") int size,
+            @Parameter(description = "Sort field") @RequestParam(defaultValue = "startTime") String sortBy,
+            @Parameter(description = "Sort direction") @RequestParam(defaultValue = "ASC") String sortDirection) {
+        PageRequestDto pageRequest = PageRequestDto.builder()
+                .page(page).size(size).sortBy(sortBy).sortDirection(sortDirection).build();
+        return ResponseEntity.ok(bookingService.getUserBookings(user.getUsername(), pageRequest));
+    }
+
+    @GetMapping
+    @Operation(summary = "Get all bookings (admin) with pagination")
+    public ResponseEntity<PageResponse<BookingResponse>> getAllBookings(
+            @Parameter(description = "Page number") @RequestParam(defaultValue = "0") int page,
+            @Parameter(description = "Page size") @RequestParam(defaultValue = "20") int size,
+            @Parameter(description = "Sort field") @RequestParam(defaultValue = "createdAt") String sortBy,
+            @Parameter(description = "Sort direction") @RequestParam(defaultValue = "DESC") String sortDirection) {
+        PageRequestDto pageRequest = PageRequestDto.builder()
+                .page(page).size(size).sortBy(sortBy).sortDirection(sortDirection).build();
+        return ResponseEntity.ok(bookingService.getAllBookings(pageRequest));
     }
 
     @DeleteMapping("/{id}")
-    @Operation(summary = "Cancel a booking", description = "Cancels an existing booking. " +
-            "Only the owner or an admin can cancel. Cannot cancel within 1 hour of start time.")
+    @Operation(summary = "Cancel a booking")
     @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Booking cancelled successfully"),
+            @ApiResponse(responseCode = "200", description = "Booking cancelled"),
             @ApiResponse(responseCode = "404", description = "Booking not found"),
-            @ApiResponse(responseCode = "422", description = "Cannot cancel - business rule violation")
+            @ApiResponse(responseCode = "422", description = "Cannot cancel")
     })
     public ResponseEntity<BookingResponse> cancelBooking(
             @PathVariable Long id,

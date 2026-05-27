@@ -1,6 +1,8 @@
 package com.template.booking.repository;
 
 import com.template.booking.model.Booking;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
@@ -31,5 +33,16 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
             @Param("resourceId") Long resourceId,
             @Param("date") LocalDateTime date);
 
-    List<Booking> findByUserIdAndStatus(String userId, Booking.BookingStatus status);
+    Page<Booking> findByUserIdAndStatus(Booking.BookingStatus status, Pageable pageable);
+
+    Page<Booking> findByStatus(Booking.BookingStatus status, Pageable pageable);
+
+    @Query("SELECT b FROM Booking b WHERE b.resource.id = :resourceId " +
+           "AND b.status != 'CANCELLED' " +
+           "AND b.startTime >= :start AND b.startTime < :end " +
+           "ORDER BY b.startTime ASC")
+    List<Booking> findByResourceIdAndDateRange(
+            @Param("resourceId") Long resourceId,
+            @Param("start") LocalDateTime start,
+            @Param("end") LocalDateTime end);
 }

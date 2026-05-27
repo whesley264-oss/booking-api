@@ -5,7 +5,7 @@ spring:
     url: jdbc:h2:mem:bookingdb
     driver-class-name: org.h2.Driver
     username: sa
-    password: 
+    password:
   h2:
     console:
       enabled: true
@@ -20,6 +20,22 @@ spring:
 server:
   port: 8080
 
+booking:
+  business:
+    hour-start: "08:00"
+    hour-end: "18:00"
+  booking:
+    min-advance-hours: 1
+    min-duration-minutes: 30
+    max-duration-hours: 8
+    allow-weekends: false
+  cancellation:
+    min-hours: 1
+
+jwt:
+  secret: "mySecretKeyForJWTTokenGenerationThatIsLongEnough256Bits"
+  expiration: 86400000
+
 springdoc:
   api-docs:
     path: /api-docs
@@ -30,12 +46,19 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics
+        include: health,info,metrics,prometheus
   endpoint:
     health:
       show-details: when-authorized
+  metrics:
+    export:
+      prometheus:
+        enabled: true
 
 logging:
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
   level:
     com.template.booking: DEBUG
     org.springframework.security: INFO
+    org.hibernate.SQL: DEBUG

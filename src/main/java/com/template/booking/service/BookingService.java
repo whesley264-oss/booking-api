@@ -1,6 +1,9 @@
 package com.template.booking.service;
 
+import com.template.booking.config.BookingProperties;
 import com.template.booking.dto.*;
+import com.template.booking.dto.common.PageRequestDto;
+import com.template.booking.dto.common.PageResponse;
 import com.template.booking.event.BookingCancelledEvent;
 import com.template.booking.event.BookingCreatedEvent;
 import com.template.booking.exception.*;
@@ -12,11 +15,12 @@ import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -25,11 +29,11 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class BookingService {
     private static final Logger log = LoggerFactory.getLogger(BookingService.class);
-    private static final int MIN_BOOKING_HOURS_IN_ADVANCE = 1;
 
     private final BookingRepository bookingRepository;
     private final ResourceRepository resourceRepository;
     private final ApplicationEventPublisher eventPublisher;
+    private final BookingProperties bookingProperties;
 
     @Transactional
     public BookingResponse createBooking(String userId, CreateBookingRequest request) {
@@ -38,7 +42,6 @@ public class BookingService {
 
         validateBookingTimes(request.getStartTime(), request.getEndTime());
         Resource resource = getActiveResource(request.getResourceId());
-
         checkForConflicts(request.getResourceId(), request.getStartTime(), request.getEndTime());
 
         Booking booking = Booking.builder()
@@ -72,9 +75,10 @@ public class BookingService {
             throw new InvalidBookingException("Cannot cancel a booking that has already started");
         }
 
-        if (booking.getStartTime().isBefore(LocalDateTime.now().plusHours(MIN_BOOKING_HOURS_IN_ADVANCE))) {
+        int minHours = bookingProperties.getCancellation().getMinHours();
+        if (booking.getStartTime().isBefore(LocalDateTime.now().plusHours(minHours))) {
             throw new InvalidBookingException(
-                    "Cannot cancel booking within " + MIN_BOOKING_HOURS_IN_ADVANCE + " hour(s) of start time");
+                    "Cannot cancel booking within " + minHours + " hour(s) of start time");
         }
 
         booking.setStatus(Booking.BookingStatus.CANCELLED);
@@ -90,17 +94,16 @@ public class BookingService {
         log.info("Getting availability for resource: {} on date: {}", resourceId, date);
 
         getActiveResource(resourceId);
-
         LocalDateTime dayStart = date.atStartOfDay();
-        LocalDateTime dayEnd = date.atTime(LocalTime.MAX);
 
         List<Booking> existingBookings = bookingRepository.findByResourceIdAndDate(resourceId, dayStart);
 
         List<AvailabilityResponse> slots = new ArrayList<>();
-        LocalTime startHour = LocalTime.of(8, 0);
-        LocalTime endHour = LocalTime.of(18, 0);
-
-        for (LocalTime time = startHour; time.isBefore(endHour); time = time.plusHours(1)) {
+        var businessConfig = bookingProperties.getBusiness();
+        
+        for (var time = businessConfig.getStartTime(); 
+             time.isBefore(businessConfig.getEndTime()); 
+             time = time.plusHours(1)) {
             LocalDateTime slotStart = date.atTime(time);
             LocalDateTime slotEnd = date.atTime(time.plusHours(1));
 
@@ -118,11 +121,23 @@ public class BookingService {
     }
 
     @Transactional(readOnly = true)
-    public List<BookingResponse> getUserBookings(String userId) {
-        return bookingRepository.findByUserIdAndStatus(userId, Booking.BookingStatus.CONFIRMED)
-                .stream()
+    public PageResponse<BookingResponse> getUserBookings(String userId, PageRequestDto pageRequest) {
+        Page<Booking> page = bookingRepository.findByUserIdAndStatus(
+                Booking.BookingStatus.CONFIRMED, pageRequest.toSpringPageRequest());
+        List<BookingResponse> content = page.getContent().stream()
                 .map(BookingResponse::fromEntity)
                 .collect(Collectors.toList());
+        return PageResponse.of(content, page.getNumber(), page.getSize(), page.getTotalElements());
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<BookingResponse> getAllBookings(PageRequestDto pageRequest) {
+        Page<Booking> page = bookingRepository.findByStatus(
+                Booking.BookingStatus.CONFIRMED, pageRequest.toSpringPageRequest());
+        List<BookingResponse> content = page.getContent().stream()
+                .map(BookingResponse::fromEntity)
+                .collect(Collectors.toList());
+        return PageResponse.of(content, page.getNumber(), page.getSize(), page.getTotalElements());
     }
 
     @Transactional(readOnly = true)
@@ -133,14 +148,28 @@ public class BookingService {
     }
 
     private void validateBookingTimes(LocalDateTime startTime, LocalDateTime endTime) {
+        var bookingConfig = bookingProperties.getBooking();
+        var businessConfig = bookingProperties.getBusiness();
+
         if (startTime.isAfter(endTime)) {
             throw new InvalidBookingException("Start time must be before end time");
         }
         if (startTime.isBefore(LocalDateTime.now())) {
             throw new InvalidBookingException("Cannot create a booking in the past");
         }
-        if (startTime.plusMinutes(30).isAfter(endTime)) {
-            throw new InvalidBookingException("Booking must be at least 30 minutes long");
+        if (startTime.plusMinutes(bookingConfig.getMinDurationMinutes()).isAfter(endTime)) {
+            throw new InvalidBookingException(
+                    "Booking must be at least " + bookingConfig.getMinDurationMinutes() + " minutes long");
+        }
+        if (startTime.toLocalTime().isBefore(businessConfig.getStartTime()) || 
+            endTime.toLocalTime().isAfter(businessConfig.getEndTime())) {
+            throw new InvalidBookingException(
+                    "Booking must be within business hours (" + 
+                    businessConfig.getHourStart() + " - " + businessConfig.getHourEnd() + ")");
+        }
+        if (!bookingConfig.isAllowWeekends() && 
+            (startTime.getDayOfWeek() == DayOfWeek.SATURDAY || startTime.getDayOfWeek() == DayOfWeek.SUNDAY)) {
+            throw new InvalidBookingException("Booking is not allowed on weekends");
         }
     }
 

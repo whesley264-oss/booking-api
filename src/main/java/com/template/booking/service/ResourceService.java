@@ -2,10 +2,14 @@ package com.template.booking.service;
 
 import com.template.booking.dto.ResourceRequest;
 import com.template.booking.dto.ResourceResponse;
+import com.template.booking.dto.common.PageRequestDto;
+import com.template.booking.dto.common.PageResponse;
 import com.template.booking.exception.ResourceNotFoundException;
 import com.template.booking.model.Resource;
 import com.template.booking.repository.ResourceRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
@@ -29,17 +33,22 @@ public class ResourceService {
     }
 
     @Transactional(readOnly = true)
-    public List<ResourceResponse> getAllResources() {
-        return resourceRepository.findAll().stream()
+    public PageResponse<ResourceResponse> getAllResources(PageRequestDto pageRequest) {
+        Page<Resource> page = resourceRepository.findAll(pageRequest.toSpringPageRequest());
+        List<ResourceResponse> content = page.getContent().stream()
                 .map(ResourceResponse::fromEntity)
                 .collect(Collectors.toList());
+        return PageResponse.of(content, page.getNumber(), page.getSize(), page.getTotalElements());
     }
 
     @Transactional(readOnly = true)
-    public List<ResourceResponse> getActiveResources() {
-        return resourceRepository.findByStatus(Resource.ResourceStatus.ACTIVE).stream()
+    public PageResponse<ResourceResponse> getActiveResources(PageRequestDto pageRequest) {
+        Page<Resource> page = resourceRepository.findByStatus(
+                Resource.ResourceStatus.ACTIVE, pageRequest.toSpringPageRequest());
+        List<ResourceResponse> content = page.getContent().stream()
                 .map(ResourceResponse::fromEntity)
                 .collect(Collectors.toList());
+        return PageResponse.of(content, page.getNumber(), page.getSize(), page.getTotalElements());
     }
 
     @Transactional(readOnly = true)
